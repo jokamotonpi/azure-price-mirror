@@ -2,23 +2,29 @@ name: Fetch Azure Prices
 
 on:
   schedule:
-    - cron: '0 2 * * *'   # 2 AM UTC every night
+    - cron: '0 2 * * *'   # nightly — fetches region stored in trigger/run
   workflow_dispatch:        # manually triggerable from the Actions tab
   push:
     branches: [main]
     paths:
-      - 'scripts/fetch_prices.py'   # trigger when REGIONS config changes
-      - 'trigger/**'                 # trigger via lightweight trigger file
+      - 'trigger/**'         # Claude updates this with the target region
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
     permissions:
-      contents: write       # needed to commit the CSV back to the repo
+      contents: write        # REQUIRED — lets the bot commit the CSV back
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Read target region from trigger/run
+        id: region
+        run: |
+          REGION=$(cat trigger/run | tr -d '[:space:]')
+          echo "region=$REGION" >> $GITHUB_OUTPUT
+          echo "Target region: $REGION"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -26,7 +32,7 @@ jobs:
           python-version: '3.11'
 
       - name: Fetch Azure retail prices
-        run: python scripts/fetch_prices.py
+        run: python scripts/fetch_prices.py "${{ steps.region.outputs.region }}"
 
       - name: Commit & push updated CSV
         run: |
@@ -35,5 +41,5 @@ jobs:
           git add prices/
           # Only commit if something actually changed
           git diff --staged --quiet || \
-            git commit -m "chore: update Azure prices $(date -u +%Y-%m-%d)"
+            git commit -m "chore: update Azure prices ${{ steps.region.outputs.region }} $(date -u +%Y-%m-%d)"
           git push

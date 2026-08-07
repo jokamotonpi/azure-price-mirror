@@ -1,7 +1,10 @@
 """
 fetch_prices.py — Azure Retail Prices fetcher
-Pulls all pages from the Azure Retail Prices API for the configured region
-and writes a single CSV to prices/AzurePriceList_<region>.csv.
+Fetches a single region passed as a CLI argument and writes
+prices/AzurePriceList_<region>.csv.
+
+Usage: python fetch_prices.py <arm-region-name>
+Example: python fetch_prices.py centralus
 
 No external packages required — stdlib only.
 """
@@ -11,10 +14,10 @@ import csv
 import urllib.request
 import urllib.error
 import os
+import sys
 from datetime import datetime, timezone
 
 # ── Config ────────────────────────────────────────────────────────────────────
-REGIONS = ["eastus", "centralus"]  # add more ARM region names here if desired
 API_BASE = "https://prices.azure.com/api/retail/prices"
 OUTPUT_DIR = "prices"
 # ─────────────────────────────────────────────────────────────────────────────
@@ -26,7 +29,6 @@ HEADERS = {
 
 
 def fetch_all_items(region: str) -> list[dict]:
-    # No api-version param — the API works without it and avoids version errors
     url = f"{API_BASE}?armRegionName={region}"
     all_items: list[dict] = []
     page = 0
@@ -46,7 +48,7 @@ def fetch_all_items(region: str) -> list[dict]:
             raise
 
         all_items.extend(data.get("Items", []))
-        url = data.get("NextPageLink")  # None when last page
+        url = data.get("NextPageLink")
 
     print(f"  [{region}] done — {len(all_items):,} rows")
     return all_items
@@ -70,14 +72,18 @@ def write_csv(items: list[dict], path: str) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) < 2:
+        print("Usage: python fetch_prices.py <arm-region-name>")
+        print("Example: python fetch_prices.py centralus")
+        sys.exit(1)
+
+    region = sys.argv[1].strip()
     run_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    print(f"Azure Retail Prices fetch — {run_time}")
+    print(f"Azure Retail Prices fetch — {region} — {run_time}")
 
-    for region in REGIONS:
-        items = fetch_all_items(region)
-        out_path = os.path.join(OUTPUT_DIR, f"AzurePriceList_{region}.csv")
-        write_csv(items, out_path)
-
+    items = fetch_all_items(region)
+    out_path = os.path.join(OUTPUT_DIR, f"AzurePriceList_{region}.csv")
+    write_csv(items, out_path)
     print("All done.")
 
 
