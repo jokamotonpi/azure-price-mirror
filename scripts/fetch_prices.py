@@ -42,6 +42,12 @@ def fetch_all_items(region: str) -> list[dict]:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
+            # The API sometimes returns a NextPageLink pointing past the last row.
+            # "Skip value N is greater than the total count N" means we already
+            # have everything — treat it as a clean end of results, not an error.
+            if e.code == 400 and "Skip value" in body and "greater than the total count" in body:
+                print(f"  [{region}] reached end of results after {len(all_items):,} rows (API skip boundary — normal)")
+                break
             print(f"  ERROR {e.code} on page {page}: {e.reason}")
             print(f"  URL: {url}")
             print(f"  Response body: {body[:500]}")
