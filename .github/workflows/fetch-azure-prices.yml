@@ -3,7 +3,12 @@ name: Fetch Azure Prices
 on:
   schedule:
     - cron: '0 2 * * *'   # 2 AM UTC every night
-  workflow_dispatch:        # also triggerable manually from the Actions tab
+  workflow_dispatch:        # manually triggerable from the Actions tab
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/fetch_prices.py'   # trigger when REGIONS config changes
+      - 'trigger/**'                 # trigger via lightweight trigger file
 
 jobs:
   fetch:
