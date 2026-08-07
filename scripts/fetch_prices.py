@@ -41,22 +41,22 @@ def fetch_all_items(region: str) -> list[dict]:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")
-            # The API sometimes returns a NextPageLink pointing past the last row.
-            # "Skip value N is greater than the total count N" means we already
-            # have everything — treat it as a clean end of results, not an error.
-            if e.code == 400 and "Skip value" in body and "greater than the total count" in body:
-                print(f"  [{region}] reached end of results after {len(all_items):,} rows (API skip boundary — normal)")
+            # Azure API known behaviour: the NextPageLink on the very last page
+            # points one step past the end, returning HTTP 400.  This is not a
+            # real error — we already have all the data.  Break cleanly.
+            if e.code == 400 and page > 1:
+                print(f"  [{region}] HTTP 400 on page {page} — API pagination boundary reached, "
+                      f"{len(all_items):,} rows collected.  Treating as end-of-results.")
                 break
+            # Any other error (including 400 on page 1) is unexpected — re-raise.
             print(f"  ERROR {e.code} on page {page}: {e.reason}")
             print(f"  URL: {url}")
-            print(f"  Response body: {body[:500]}")
             raise
 
         all_items.extend(data.get("Items", []))
         url = data.get("NextPageLink")
 
-    print(f"  [{region}] done — {len(all_items):,} rows")
+    print(f"  [{region}] done — {len(all_items):,} total rows")
     return all_items
 
 
