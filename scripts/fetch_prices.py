@@ -9,28 +9,41 @@ No external packages required — stdlib only.
 import json
 import csv
 import urllib.request
+import urllib.error
 import os
 from datetime import datetime, timezone
 
 # ── Config ────────────────────────────────────────────────────────────────────
 REGIONS = ["eastus", "centralus"]  # add more ARM region names here if desired
 API_BASE = "https://prices.azure.com/api/retail/prices"
-API_VERSION = "2023-01-01-preview"
 OUTPUT_DIR = "prices"
 # ─────────────────────────────────────────────────────────────────────────────
 
+HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "azure-price-mirror/1.0 (github-actions)",
+}
+
 
 def fetch_all_items(region: str) -> list[dict]:
-    url = f"{API_BASE}?armRegionName={region}&api-version={API_VERSION}"
+    # No api-version param — the API works without it and avoids version errors
+    url = f"{API_BASE}?armRegionName={region}"
     all_items: list[dict] = []
     page = 0
 
     while url:
         page += 1
         print(f"  [{region}] page {page} — fetched {len(all_items):,} rows so far …")
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        req = urllib.request.Request(url, headers=HEADERS)
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            print(f"  ERROR {e.code} on page {page}: {e.reason}")
+            print(f"  URL: {url}")
+            print(f"  Response body: {body[:500]}")
+            raise
 
         all_items.extend(data.get("Items", []))
         url = data.get("NextPageLink")  # None when last page
