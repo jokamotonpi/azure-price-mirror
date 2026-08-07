@@ -13,7 +13,7 @@ import os
 from datetime import datetime, timezone
 
 # ── Config ────────────────────────────────────────────────────────────────────
-REGIONS = ["eastus"]          # add more ARM region names here if desired
+REGIONS = ["eastus", "centralus"]  # add more ARM region names here if desired
 API_BASE = "https://prices.azure.com/api/retail/prices"
 API_VERSION = "2023-01-01-preview"
 OUTPUT_DIR = "prices"
@@ -35,7 +35,7 @@ def fetch_all_items(region: str) -> list[dict]:
         all_items.extend(data.get("Items", []))
         url = data.get("NextPageLink")  # None when last page
 
-    print(f"  [{region}] done — {len(all_items):,} total rows")
+    print(f"  [{region}] done — {len(all_items):,} rows")
     return all_items
 
 
