@@ -7,12 +7,21 @@ Usage: python fetch_prices.py <arm-region-name>
 Example: python fetch_prices.py centralus
 
 No external packages required — stdlib only.
+
+IMPORTANT: The Azure Retail Prices API requires the OData $filter syntax to
+properly restrict results to a single region.  The shorthand query-string form
+(?armRegionName=X) does NOT filter — it returns the entire global price list
+(~1 M rows, ~268 MB), which exceeds GitHub's 100 MB push limit.
+
+Correct URL form:
+  https://prices.azure.com/api/retail/prices?$filter=armRegionName eq 'centralus'&$skip=N
 """
 
 import json
 import csv
 import urllib.request
 import urllib.error
+import urllib.parse
 import os
 import sys
 from datetime import datetime, timezone
@@ -29,32 +38,48 @@ HEADERS = {
 
 
 def fetch_all_items(region: str) -> list[dict]:
-    url = f"{API_BASE}?armRegionName={region}"
+    # Use OData $filter to restrict results to the requested region only.
+    # The $skip parameter is used for manual pagination because NextPageLink
+    # is unreliable when responses are very large.
+    filter_expr = f"armRegionName eq '{region}'"
+    base_url = f"{API_BASE}?$filter={urllib.parse.quote(filter_expr)}"
+
     all_items: list[dict] = []
+    skip = 0
     page = 0
 
-    while url:
+    while True:
         page += 1
-        print(f"  [{region}] page {page} — fetched {len(all_items):,} rows so far …")
+        url = f"{base_url}&$skip={skip}"
+        print(f"  [{region}] page {page} (skip={skip}) — fetched {len(all_items):,} rows so far …")
+
         req = urllib.request.Request(url, headers=HEADERS)
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            # Azure API known behaviour: the NextPageLink on the very last page
-            # points one step past the end, returning HTTP 400.  This is not a
-            # real error — we already have all the data.  Break cleanly.
+            # HTTP 400 after page 1 = skip value exceeded total count (end of data)
             if e.code == 400 and page > 1:
-                print(f"  [{region}] HTTP 400 on page {page} — API pagination boundary reached, "
-                      f"{len(all_items):,} rows collected.  Treating as end-of-results.")
+                print(f"  [{region}] HTTP 400 on page {page} — end of results, "
+                      f"{len(all_items):,} rows collected.")
                 break
-            # Any other error (including 400 on page 1) is unexpected — re-raise.
             print(f"  ERROR {e.code} on page {page}: {e.reason}")
-            print(f"  URL: {url}")
             raise
 
-        all_items.extend(data.get("Items", []))
-        url = data.get("NextPageLink")
+        items = data.get("Items", [])
+        if not items:
+            print(f"  [{region}] Empty page — end of results.")
+            break
+
+        all_items.extend(items)
+        skip += len(items)
+
+        # Belt-and-suspenders: also follow NextPageLink if present and skip
+        # value aligns, but prefer our own skip counter.
+        next_link = data.get("NextPageLink")
+        if not next_link:
+            # No next page link — done
+            break
 
     print(f"  [{region}] done — {len(all_items):,} total rows")
     return all_items
